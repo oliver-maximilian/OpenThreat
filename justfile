@@ -1,3 +1,6 @@
+# On Windows use PowerShell instead of sh for simple (non-shebang) recipes
+set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
+
 # OS-aware venv paths
 venv_bin := if os_family() == "windows" { ".venv/Scripts" } else { ".venv/bin" }
 python    := if os_family() == "windows" { "python" }        else { "python3" }
