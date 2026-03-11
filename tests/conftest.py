@@ -15,6 +15,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from sqlalchemy.dialects.sqlite.base import SQLiteTypeCompiler
+
+# JSONB is PostgreSQL-specific; teach SQLite to treat it like JSON for tests
+SQLiteTypeCompiler.visit_JSONB = SQLiteTypeCompiler.visit_JSON  # type: ignore[attr-defined]
 
 from backend.main import app
 from backend.database import get_db, Base

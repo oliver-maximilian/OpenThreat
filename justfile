@@ -34,6 +34,7 @@ setup:
     echo "==> Installing Python dependencies..."
     .venv/bin/pip install --upgrade pip --quiet
     .venv/bin/pip install -r requirements.txt --quiet
+    .venv/bin/pip install -r requirements-test.txt --quiet
 
     echo "==> Installing Node dependencies..."
     cd frontend && npm install --silent && cd ..
@@ -82,6 +83,7 @@ setup:
     Write-Host "==> Installing Python dependencies..."
     .venv\Scripts\pip install --upgrade pip --quiet
     .venv\Scripts\pip install -r requirements.txt --quiet
+    .venv\Scripts\pip install -r requirements-test.txt --quiet
 
     Write-Host "==> Installing Node dependencies..."
     Set-Location frontend; npm install --silent; Set-Location ..
@@ -144,6 +146,7 @@ TARGET := ""
 [unix]
 test:
     #!/usr/bin/env sh
+    set -e
     if [ -n "{{TARGET}}" ]; then
         echo "==> Running tests: {{TARGET}}"
         .venv/bin/pytest {{TARGET}} -v

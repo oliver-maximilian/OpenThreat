@@ -276,6 +276,7 @@ See [nginx/README.md](nginx/README.md) for details.
 ### Getting Started
 - [Quick Start Guide](QUICK_START.md) - 5-Minute Setup
 - [Development Setup](DEVELOPMENT_SETUP.md) - Local Development & Troubleshooting
+- [Task Runner (just)](justfile.md) - Recipes & Installation (macOS, Windows, Linux)
 - [Nginx Configuration](nginx/README.md) - Routing & Reverse Proxy
 
 ### Technical Documentation
