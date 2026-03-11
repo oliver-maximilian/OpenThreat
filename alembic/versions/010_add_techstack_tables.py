@@ -46,8 +46,8 @@ def upgrade() -> None:
     )
 
     # Create index for faster lookups
-    op.create_index("ix_tech_stacks_user_id", "tech_stacks", ["user_id"])
-    op.create_index("ix_tech_stacks_session_id", "tech_stacks", ["session_id"])
+    op.create_index("ix_tech_stacks_user_id", "tech_stacks", ["user_id"], if_not_exists=True)
+    op.create_index("ix_tech_stacks_session_id", "tech_stacks", ["session_id"], if_not_exists=True)
 
     # Create tech_stack_matches table for caching CVE matches
     op.create_table(
@@ -72,9 +72,9 @@ def upgrade() -> None:
     )
 
     # Create indexes for efficient querying
-    op.create_index("ix_tech_stack_matches_tech_stack_id", "tech_stack_matches", ["tech_stack_id"])
-    op.create_index("ix_tech_stack_matches_vulnerability_id", "tech_stack_matches", ["vulnerability_id"])
-    op.create_index("ix_tech_stack_matches_package", "tech_stack_matches", ["package_name", "ecosystem"])
+    op.create_index("ix_tech_stack_matches_tech_stack_id", "tech_stack_matches", ["tech_stack_id"], if_not_exists=True)
+    op.create_index("ix_tech_stack_matches_vulnerability_id", "tech_stack_matches", ["vulnerability_id"], if_not_exists=True)
+    op.create_index("ix_tech_stack_matches_package", "tech_stack_matches", ["package_name", "ecosystem"], if_not_exists=True)
 
     # Create unique constraint to prevent duplicate matches
     op.create_unique_constraint(

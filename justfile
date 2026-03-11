@@ -1,135 +1,141 @@
-# Pfad zum venv-Bin-Verzeichnis
+# Path to venv bin directory
 venv_bin := ".venv/bin"
 
-# Zeige alle verfügbaren Rezepte
+# List all available recipes
 default:
     @just --list
 
-# Erstellt .venv falls nicht vorhanden
-venv-create:
+# setup -> venv, .env, pip+npm install, infra, migrations
+setup:
     #!/usr/bin/env sh
+    set -e
+
+    # .venv
     if [ ! -d .venv ]; then
-        echo "Erstelle Python-venv in .venv ..."
+        echo "==> Creating Python venv..."
         python3 -m venv .venv
-        echo "✓ .venv erstellt"
-    else
-        echo "✓ .venv existiert bereits"
     fi
 
-# Kopiert .env.dist nach .env + stellt sicher dass .venv existiert
-init: venv-create
-    #!/usr/bin/env sh
+    # .env
     if [ -f .env ]; then
-        echo ".env existiert bereits – nichts geändert."
-        echo "Zum Zurücksetzen: just init-force"
+        echo "==> .env already exists, skipping."
     else
-        cp .env.dist .env
-        echo ".env wurde aus .env.dist erstellt."
-        echo "Bitte prüfe die Werte in .env, besonders SECRET_KEY."
+        cp .env.example .env
+        echo "==> .env created from .env.example – review SECRET_KEY before going to prod."
     fi
 
-# Überschreibt .env immer mit .env.dist
-init-force:
-    cp .env.dist .env
-    @echo ".env wurde (neu) aus .env.dist erstellt."
+    # Python deps
+    echo "==> Installing Python dependencies..."
+    .venv/bin/pip install --upgrade pip --quiet
+    .venv/bin/pip install -r requirements.txt --quiet
 
-# Startet Postgres + Redis im Hintergrund
-infra-up:
-    #!/usr/bin/env sh
+    # Node deps
+    echo "==> Installing Node dependencies..."
+    cd frontend && npm install --silent && cd ..
+
+    # Infrastructure
+    echo "==> Starting Postgres + Redis..."
     docker-compose -f docker-compose.dev.yml up -d postgres redis
-    echo "Warte auf Healthchecks..."
+
+    echo "==> Waiting for healthchecks..."
     for container in openthreat-db openthreat-redis; do
         i=0
         while ! docker inspect "$container" 2>/dev/null | grep -q '"Status": "healthy"'; do
             i=$((i + 1))
             if [ $i -ge 30 ]; then
-                echo "Timeout: $container ist nicht healthy geworden." >&2
+                echo "Timeout: $container did not become healthy." >&2
                 exit 1
             fi
             sleep 1
         done
-        echo "✓ $container ist healthy"
+        echo "    $container"
     done
 
-# Stoppt und entfernt Infrastruktur-Container
-infra-down:
-    docker-compose -f docker-compose.dev.yml down
+    # Migrations
+    echo "==> Running migrations..."
+    .venv/bin/alembic upgrade head
 
-# Stoppt und löscht auch die Volumes (Achtung: alle DB-Daten gehen verloren)
-infra-clean:
-    docker-compose -f docker-compose.dev.yml down -v
+    echo ""
+    echo "Setup complete. Run 'just dev' to start."
 
-# Installiert Python-Abhängigkeiten in .venv
-backend-install: venv-create
-    {{venv_bin}}/pip install --upgrade pip
-    {{venv_bin}}/pip install -r requirements.txt
-
-# Führt Datenbankmigrationen aus
-migrate:
-    {{venv_bin}}/alembic upgrade head
-
-# Startet den FastAPI-Entwicklungsserver
-backend-dev:
-    {{venv_bin}}/uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-
-# Startet den Celery-Worker
-worker:
-    {{venv_bin}}/celery -A backend.celery_app worker --loglevel=info
-
-# Installiert Node-Abhängigkeiten
-frontend-install:
-    cd frontend && npm install
-
-# Startet den Next.js-Entwicklungsserver
-frontend-dev:
-    cd frontend && npm run dev
-
-# Baut das Frontend für Produktion
-frontend-build:
-    cd frontend && npm run build
-
-# Führt alle Tests aus
-test:
-    {{venv_bin}}/pytest
-
-# Tests mit Coverage-Report
-test-cov:
-    {{venv_bin}}/pytest --cov=backend --cov-report=term-missing --cov-report=html
-
-# Nur einen bestimmten Test oder Ordner ausführen (Beispiel: just test-only tests/test_api_vulnerabilities.py)
-test-only target:
-    {{venv_bin}}/pytest {{target}} -v
-
-# Formatiert Backend-Code
-fmt:
-    {{venv_bin}}/black backend/ tests/
-    {{venv_bin}}/isort backend/ tests/
-
-# Lint-Check (ohne Änderungen)
-lint:
-    {{venv_bin}}/flake8 backend/ tests/
-    {{venv_bin}}/black --check backend/ tests/
-    {{venv_bin}}/isort --check-only backend/ tests/
-
-# Vollständiger Quickstart: init → Infra → Migration → Dev-Server
-quickstart: init infra-up backend-install migrate frontend-install
-    @echo ""
-    @echo "✓ Infrastruktur läuft"
-    @echo "✓ Migrationen angewendet"
-    @echo "✓ Abhängigkeiten installiert"
-    @echo ""
-    @echo "Starte jetzt in zwei separaten Terminals:"
-    @echo "  just backend-dev"
-    @echo "  just frontend-dev"
-    @echo ""
-    @echo "Backend:  http://localhost:8000"
-    @echo "API-Docs: http://localhost:8000/docs"
-    @echo "Frontend: http://localhost:3000"
-
-# Quickstart komplett in einer Session (blockiert – Ctrl+C beendet alles)
-quickstart-run: init infra-up backend-install migrate frontend-install
+# dev -> start backend + frontend in one session (blocking, Ctrl+C stops all)
+[no-exit-message]
+dev:
     #!/usr/bin/env sh
     trap 'kill 0' INT TERM
+    echo "==> Starting backend on :8000 and frontend on :3000"
     .venv/bin/uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000 &
     cd frontend && npm run dev &
     wait
+
+TARGET := ""
+# test -> full suite with coverage; use TARGET=tests/foo.py for a single file
+test:
+    #!/usr/bin/env sh
+    source {{venv_bin}}/activate
+    if [ -n "{{TARGET}}" ]; then
+        echo "==> Running tests: {{TARGET}}"
+        pytest {{TARGET}} -v
+    else
+        echo "==> Running full test suite with coverage..."
+        pytest --cov=backend --cov-report=term-missing --cov-report=html
+        echo "==> Coverage report saved to htmlcov/index.html"
+    fi
+
+# check -> auto-format (black+isort) then lint (flake8)
+check:
+    #!/usr/bin/env sh
+    source {{venv_bin}}/activate
+    set -e
+    echo "==> Formatting with black + isort..."
+    black backend/ tests/
+    isort backend/ tests/
+    echo "==> Linting with flake8..."
+    flake8 backend/ tests/
+    echo "All checks passed."
+
+# infra -> manage Docker infra: just infra [up|down|clean]
+infra action="up":
+    #!/usr/bin/env sh
+    case "{{action}}" in
+      up)
+        docker-compose -f docker-compose.dev.yml up -d postgres redis
+        echo "==> Waiting for healthchecks..."
+        for container in openthreat-db openthreat-redis; do
+            i=0
+            while ! docker inspect "$container" 2>/dev/null | grep -q '"Status": "healthy"'; do
+                i=$((i + 1))
+                if [ $i -ge 30 ]; then
+                    echo "Timeout: $container did not become healthy." >&2
+                    exit 1
+                fi
+                sleep 1
+            done
+            echo "    $container"
+        done
+        ;;
+      down)
+        docker-compose -f docker-compose.dev.yml down
+        ;;
+      clean)
+        echo "WARNING: this will delete all database volumes."
+        docker-compose -f docker-compose.dev.yml down -v
+        ;;
+      *)
+        echo "Unknown action: {{action}}. Use up | down | clean." >&2
+        exit 1
+        ;;
+    esac
+
+# migrate -> run pending Alembic migrations
+migrate:
+    #!/usr/bin/env sh
+    source {{venv_bin}}/activate
+    alembic upgrade head
+
+# worker -> start Celery worker
+worker:
+    #!/usr/bin/env sh
+    source {{venv_bin}}/activate
+    celery -A backend.celery_app worker --loglevel=info
+
